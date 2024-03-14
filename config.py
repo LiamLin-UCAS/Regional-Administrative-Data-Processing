@@ -1,4 +1,4 @@
-dir_path = 'C:\\path\\to\\file\\'  # 文件位置
+dir_path = 'data'  # 文件位置
 save_path = 'default'  # 保存位置
 start = '2010-01-01'  # 开始日期
 end = '2020-12-31'  # 结束日期
