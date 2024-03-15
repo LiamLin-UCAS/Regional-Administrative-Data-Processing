@@ -1,2 +1,4 @@
 #jetbrains config
 /.idea/
+# possible data file
+*.xlsx

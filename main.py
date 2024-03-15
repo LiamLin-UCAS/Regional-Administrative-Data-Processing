@@ -2,20 +2,50 @@ import math
 import pandas as pd
 from datetime import datetime
 import os
+from threading import Thread, Lock
 
 from config import dir_path, save_path, start, end, row_filter_column, file_suffix
 
 
-def process_xlsx(_path_to_file, _row_filter_column, _start_date, _end_date):
-    df = pd.read_excel(_path_to_file)
-    new_df = pd.DataFrame()
-    for row in range(0, len(df)):
-        selected_row = df.iloc[row]  # get row data, type: Pandas Series
+def thread_process_xlsx(_part_data, _row_filter_column, _start_date, _end_date, _lock, _total):
+    thread_name = Thread.getName()
+    new_filtered_data = pd.DataFrame()
+    for row in range(0, len(_part_data)):
+        selected_row = _part_data.iloc[row]  # get row data, type: Pandas Series
         if type(selected_row[_row_filter_column]) == float and math.isnan(selected_row[_row_filter_column]):
             continue
         open_date = datetime.strptime(selected_row[_row_filter_column], '%Y-%m-%d')
         if _start_date <= open_date <= _end_date:
-            new_df = new_df._append(selected_row.transpose())
+            new_filtered_data = new_filtered_data._append(selected_row.transpose())
+    _lock.acquire()
+    _total.append(new_filtered_data)
+    _lock.release()
+    pass
+
+
+def process_xlsx(_path_to_file, _row_filter_column, _start_date, _end_date):
+    df = pd.read_excel(_path_to_file)
+    total_rows = len(df)
+    new_df = pd.DataFrame()
+    thread_num = math.ceil(total_rows / 10000)
+    lock = Lock()
+    for thread in range(thread_num):
+        start_row = thread * 10000
+        end_row = (thread + 1) * 10000
+        if end_row > total_rows:
+            end_row = total_rows
+        part_data = df.iloc[start_row:end_row]
+        Thread(target=thread_process_xlsx,
+               args=[part_data, _row_filter_column, _start_date, _end_date, lock, new_df],
+               name=start_row + '-' + end_row
+               ).start()
+    # for row in range(0, len(df)):
+    #     selected_row = df.iloc[row]  # get row data, type: Pandas Series
+    #     if type(selected_row[_row_filter_column]) == float and math.isnan(selected_row[_row_filter_column]):
+    #         continue
+    #     open_date = datetime.strptime(selected_row[_row_filter_column], '%Y-%m-%d')
+    #     if _start_date <= open_date <= _end_date:
+    #         new_df = new_df._append(selected_row.transpose())
     return new_df
 
 
