@@ -7,11 +7,15 @@ from tqdm.contrib.concurrent import thread_map
 
 from config import dir_path, save_path, start, end, row_filter_column, file_suffix
 
+one_file_total = pd.DataFrame()
+lock = Lock()
 
-def thread_process_xlsx(_part_data: pd.DataFrame, _row_filter_column: str, _start_date: datetime, _end_date: datetime,
-                        _lock: Lock, _total: pd.DataFrame):
+
+def thread_process_xlsx(_part_data: pd.DataFrame, _row_filter_column: str, _start_date: datetime, _end_date: datetime):
     thread_name = current_thread().getName()
     # print(f"Thread {thread_name} started")
+    global one_file_total
+    global lock
     new_filtered_data = pd.DataFrame()
     for row in range(0, len(_part_data)):
         selected_row = _part_data.iloc[row]  # get row data, type: Pandas Series
@@ -20,18 +24,18 @@ def thread_process_xlsx(_part_data: pd.DataFrame, _row_filter_column: str, _star
         open_date = datetime.strptime(selected_row[_row_filter_column], '%Y-%m-%d')
         if _start_date <= open_date <= _end_date:
             new_filtered_data = new_filtered_data._append(selected_row.transpose())
-    _lock.acquire()
-    _total._append(new_filtered_data)
-    _lock.release()
+    lock.acquire()
+    one_file_total = one_file_total._append(new_filtered_data)
+    lock.release()
     pass
 
 
 def process_xlsx(_path_to_file: str, _row_filter_column: str, _start_date: datetime, _end_date: datetime):
     df = pd.read_excel(_path_to_file)
     total_rows = len(df)
-    new_df = pd.DataFrame()
+    global one_file_total
+    one_file_total = pd.DataFrame()
     thread_num = math.ceil(total_rows / 10000)
-    lock = Lock()
     tasks = []
     for thread in range(thread_num):
         start_row = thread * 10000
@@ -39,8 +43,8 @@ def process_xlsx(_path_to_file: str, _row_filter_column: str, _start_date: datet
         if end_row > total_rows:
             end_row = total_rows
         part_data = df.iloc[start_row:end_row]
-        tasks.append([part_data, _row_filter_column, _start_date, _end_date, lock, new_df])
-    thread_map(lambda x: thread_process_xlsx(*x), tasks, desc="Processing " + _path_to_file, max_workers=8)
+        tasks.append([part_data, _row_filter_column, _start_date, _end_date])
+    thread_map(lambda x: thread_process_xlsx(*x), tasks, desc="Processing " + _path_to_file, max_workers=32)
     # Thread(target=thread_process_xlsx,
     #        args=[part_data, _row_filter_column, _start_date, _end_date, lock, new_df],
     #        name=start_row + '-' + end_row
@@ -52,7 +56,7 @@ def process_xlsx(_path_to_file: str, _row_filter_column: str, _start_date: datet
     #     open_date = datetime.strptime(selected_row[_row_filter_column], '%Y-%m-%d')
     #     if _start_date <= open_date <= _end_date:
     #         new_df = new_df._append(selected_row.transpose())
-    return new_df
+    return one_file_total
 
 
 if __name__ == '__main__':
